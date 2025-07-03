@@ -1,7 +1,6 @@
-// === BACKEND: Updated userOrders Controller ===
 import orderModel from "../models/orderModel.js";
-
-const deliveryCharge = 50;
+import OrderHistory from "../models/OrderHistory.js";
+import sendOrderEmailToAdmin from "../utils/sendOrderEmail.js";
 
 const placeOrderCod = async (req, res) => {
   try {
@@ -13,6 +12,8 @@ const placeOrderCod = async (req, res) => {
     });
 
     await newOrder.save();
+
+    await sendOrderEmailToAdmin(newOrder);
     res.json({ success: true, message: "Order Placed" });
   } catch (error) {
     console.log(error);
@@ -55,12 +56,24 @@ const updateStatus = async (req, res) => {
   }
 };
 
-
 const deleteOrder = async (req, res) => {
   try {
     const orderId = req.params.id;
+
+    // 1. Get the order to be deleted
+    const orderToDelete = await orderModel.findById(orderId);
+    if (!orderToDelete) {
+      return res.json({ success: false, message: "Order not found" });
+    }
+
+    // 2. Save the order in history
+    const orderHistory = new OrderHistory(orderToDelete.toObject());
+    await orderHistory.save();
+
+    // 3. Delete from active orders
     await orderModel.findByIdAndDelete(orderId);
-    res.json({ success: true, message: "Order deleted successfully" });
+
+    res.json({ success: true, message: "Order moved to history and deleted" });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: "Something went wrong!" });
@@ -68,10 +81,29 @@ const deleteOrder = async (req, res) => {
 };
 
 
+
+const getOrderHistory = async (req, res) => {
+  try {
+    const tableNo = req.query.tableNo;
+
+    let query = {};
+    if (tableNo) {
+      query["customer.tableNo"] = tableNo;
+    }
+
+    const history = await OrderHistory.find(query).sort({ createdAt: -1 });
+    res.json({ success: true, data: history });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: "Failed to fetch order history" });
+  }
+};
+
 export {
   placeOrderCod,
   listOrders,
   userOrders,
   updateStatus,
-  deleteOrder
+  deleteOrder,
+  getOrderHistory,
 };
